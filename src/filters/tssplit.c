@@ -315,6 +315,7 @@ void m2tssplit_on_event(struct tag_m2ts_demux *ts, u32 evt_type, void *par)
 			case GF_M2TS_VIDEO_VVC:
 			case GF_M2TS_VIDEO_VVC_TEMPORAL:
 			case GF_M2TS_VIDEO_VC1:
+			case GF_M2TS_VIDEO_AV1:
 			case GF_M2TS_AUDIO_MPEG1:
 			case GF_M2TS_AUDIO_MPEG2:
 			case GF_M2TS_AUDIO_LATM_AAC:

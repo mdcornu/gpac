@@ -2120,10 +2120,9 @@ sample_entry_setup:
 	} else if (use_av1) {
 		GF_AV1Config *av1c;
 
-		if (!dsi) {
-			GF_LOG(GF_LOG_ERROR, GF_LOG_CONTAINER, ("[MP4Mux] No decoder specific info found for AV1\n"));
-			return GF_NON_COMPLIANT_BITSTREAM;
-		}
+		//not yet known
+		if (!dsi) return GF_OK;
+
 		av1c = gf_odf_av1_cfg_read(dsi->value.data.ptr, dsi->value.data.size);
 		if (!av1c) {
 			GF_LOG(GF_LOG_ERROR, GF_LOG_CONTAINER, ("[MP4Mux] Failed to parser AV1 decoder specific info\n"));

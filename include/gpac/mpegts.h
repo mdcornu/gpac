@@ -271,6 +271,7 @@ typedef enum
 	/*the rest is internal use*/
 
 	GF_M2TS_VIDEO_VC1				= 0xEA,
+	GF_M2TS_VIDEO_AV1				= 0xEB,
 	GF_M2TS_VIDEO_DCII				= 0x80,
 	GF_M2TS_AUDIO_AC3				= 0x81,
 	GF_M2TS_AUDIO_DTS				= 0x82,
@@ -291,6 +292,7 @@ enum
 {
 	GF_M2TS_RA_STREAM_AC3	= GF_4CC('A','C','-','3'),
 	GF_M2TS_RA_STREAM_VC1	= GF_4CC('V','C','-','1'),
+	GF_M2TS_RA_STREAM_AV1	= GF_4CC('A','V','1',' '),
 
 	GF_M2TS_RA_STREAM_GPAC	= GF_4CC('G','P','A','C')
 };
