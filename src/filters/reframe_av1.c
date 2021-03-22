@@ -122,7 +122,8 @@ GF_Err av1dmx_configure_pid(GF_Filter *filter, GF_FilterPid *pid, Bool is_remove
 	p = gf_filter_pid_get_property(pid, GF_PROP_PID_TIMESCALE);
 	if (p) ctx->timescale = p->value.uint;
 	ctx->state.mem_mode = GF_TRUE;
-	if (ctx->timescale && !ctx->opid) {
+	p = gf_filter_pid_get_property(pid, GF_PROP_PID_UNFRAMED);
+	if (!p->value.boolean && ctx->timescale && !ctx->opid) {
 		ctx->opid = gf_filter_pid_new(filter);
 		gf_filter_pid_copy_properties(ctx->opid, ctx->ipid);
 		gf_filter_pid_set_property(ctx->opid, GF_PROP_PID_UNFRAMED, NULL);
@@ -814,6 +815,10 @@ GF_Err av1dmx_parse_av1(GF_Filter *filter, GF_AV1DmxCtx *ctx)
 			e = GF_OK;
 		} else {
 			e = aom_av1_parse_temporal_unit_from_section5(ctx->bs, &ctx->state);
+			if (e==GF_BUFFER_TOO_SMALL) {
+				gf_av1_reset_state(&ctx->state, GF_FALSE);
+				gf_bs_seek(ctx->bs, start);
+			}
 		}
 		break;
 	case AnnexB:
