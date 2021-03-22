@@ -60,7 +60,7 @@ typedef struct
 	AV1BitstreamSyntax bsmode;
 
 	GF_BitStream *bs;
-	u64 cts;
+	u64 cts, tu_cts;
 	u32 width, height;
 	GF_Fraction64 duration;
 	Double start_range;
@@ -512,8 +512,12 @@ static void av1dmx_check_pid(GF_Filter *filter, GF_AV1DmxCtx *ctx)
 
 	gf_filter_pid_set_property(ctx->opid, GF_PROP_PID_CODECID, & PROP_UINT(ctx->codecid));
 
-	gf_filter_pid_set_property(ctx->opid, GF_PROP_PID_TIMESCALE, & PROP_UINT(ctx->cur_fps.num));
-	gf_filter_pid_set_property(ctx->opid, GF_PROP_PID_FPS, & PROP_FRAC(ctx->cur_fps));
+	if (ctx->timescale) {
+		gf_filter_pid_set_property(ctx->opid, GF_PROP_PID_TIMESCALE, & PROP_UINT(ctx->timescale));
+	} else {
+		gf_filter_pid_set_property(ctx->opid, GF_PROP_PID_TIMESCALE, & PROP_UINT(ctx->cur_fps.num));
+		gf_filter_pid_set_property(ctx->opid, GF_PROP_PID_FPS, & PROP_FRAC(ctx->cur_fps));
+	}
 	gf_filter_pid_set_property(ctx->opid, GF_PROP_PID_WIDTH, & PROP_UINT(ctx->state.width));
 	gf_filter_pid_set_property(ctx->opid, GF_PROP_PID_HEIGHT, & PROP_UINT(ctx->state.height));
 
@@ -737,6 +741,14 @@ static GF_Err av1dmx_parse_flush_sample(GF_Filter *filter, GF_AV1DmxCtx *ctx)
 	GF_FilterPacket *pck;
 	u8 *output;
 
+	//no packet ready, happens when demuxing from TS: we break at the first temporal delimiter
+	if (!ctx->state.bs) {
+		//store current cts
+		if (ctx->timescale && !ctx->tu_cts)
+			ctx->tu_cts = ctx->cts + 1;
+		return GF_OK;
+	}
+
 	gf_bs_get_content_no_truncate(ctx->state.bs, &ctx->state.frame_obus, &pck_size, &ctx->state.frame_obus_alloc);
 
 	if (!pck_size) {
@@ -747,6 +759,15 @@ static GF_Err av1dmx_parse_flush_sample(GF_Filter *filter, GF_AV1DmxCtx *ctx)
 	pck = gf_filter_pck_new_alloc(ctx->opid, pck_size, &output);
 	if (ctx->src_pck) gf_filter_pck_merge_properties(ctx->src_pck, pck);
 
+	if (ctx->timescale) {
+		//restore cts at last temporal delim delim
+		if (ctx->tu_cts) {
+			ctx->cts = ctx->tu_cts - 1;
+			ctx->tu_cts = 0;
+		}
+
+		gf_filter_pck_set_dts(pck, ctx->cts);
+	}
 	gf_filter_pck_set_cts(pck, ctx->cts);
 	gf_filter_pck_set_sap(pck, ctx->state.frame_state.key_frame ? GF_FILTER_SAP_1 : 0);
 
@@ -871,6 +892,11 @@ GF_Err av1dmx_process_buffer(GF_Filter *filter, GF_AV1DmxCtx *ctx, const char *d
 		}
 		if (!ctx->is_playing && ctx->opid)
 			break;
+
+		//no error, we stoped at a temporal delim, store cts of packet carrying this TD
+		if (!ctx->tu_cts) {
+			ctx->tu_cts = ctx->cts + 1;
+		}
 	}
 
 	if (is_copy && last_obu_end) {
@@ -966,8 +992,10 @@ GF_Err av1dmx_process(GF_Filter *filter)
 
 		//begining of a new frame
 		cts = gf_filter_pck_get_cts(pck);
-		if (cts != GF_FILTER_NO_TS)
+		if (cts != GF_FILTER_NO_TS) {
 			ctx->cts = cts;
+		}
+
 		if (ctx->src_pck) gf_filter_pck_unref(ctx->src_pck);
 		ctx->src_pck = pck;
 		gf_filter_pck_ref_props(&ctx->src_pck);

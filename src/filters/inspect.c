@@ -3011,6 +3011,8 @@ static void inspect_dump_pid(GF_InspectCtx *ctx, FILE *dump, GF_FilterPid *pid, 
 		}
 #endif
 		if (!dsi) {
+			if (!pctx->av1_state->config)
+				pctx->av1_state->config = gf_odf_av1_cfg_new();
 			gf_fprintf(dump, "/>\n");
 			return;
 		}
@@ -3560,6 +3562,8 @@ GF_Err inspect_initialize(GF_Filter *filter)
 	}
 	if (ctx->analyze) {
 		ctx->xml = GF_TRUE;
+		//whener we use bitstream dump, request full frame
+		ctx->mode = INSPECT_MODE_REFRAME;
 	}
 
 	if (ctx->xml && ctx->dump) {
