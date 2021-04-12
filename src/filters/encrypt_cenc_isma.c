@@ -1479,7 +1479,9 @@ static GF_Err cenc_encrypt_packet(GF_CENCEncCtx *ctx, GF_CENCStream *cstr, GF_Fi
 						gf_crypt_set_IV(cstr->crypt, cstr->IV, 16);
 
 					//pattern encryption
-					if (cstr->tci->crypt_byte_block && cstr->tci->skip_byte_block) {
+					// modified to force full subsample encryption for ipsec-mb
+					if (0) {
+					/* if (cstr->tci->crypt_byte_block && cstr->tci->skip_byte_block) { */
 						u32 res = nalu_size - clear_bytes - clear_bytes_at_end;
 						pos = cur_pos;
 						assert((res % 16) == 0);

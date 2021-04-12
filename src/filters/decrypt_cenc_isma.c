@@ -921,7 +921,9 @@ static GF_Err cenc_dec_process_cenc(GF_CENCDecCtx *ctx, GF_CENCDecStream *cstr, 
 			cur_pos += bytes_clear_data;
 
 			//pattern decryption
-			if (cbc_pattern && cbc_pattern->value.frac.den && cbc_pattern->value.frac.num) {
+			//modified to force full subsample decryption for ipsec-mb
+			if (0) {
+			/* if (cbc_pattern && cbc_pattern->value.frac.den && cbc_pattern->value.frac.num) { */
 				u32 pos = cur_pos;
 				u32 res = bytes_encrypted_data;
 				u32 skip_byte_block = cbc_pattern->value.frac.num;

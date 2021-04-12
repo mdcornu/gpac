@@ -28,6 +28,7 @@
 //#define AES256 1
 
 #define AES_BLOCKLEN 16 //Block length in bytes AES is 128b block only
+#define CBCS_1_9_BLK_OFFSET (AES_BLOCKLEN * 10) //Process every 10th block
 
 #if defined(AES256) && (AES256 == 1)
     #define AES_KEYLEN 32
@@ -47,6 +48,8 @@ struct AES_ctx
   u8 Iv[AES_BLOCKLEN];
   u8 counter_pos;
   u8 buffer[AES_BLOCKLEN];
+  u32 enc_keys[11*4] __attribute__((aligned(16))); // 16 byte keys * 11 rounds
+  u32 dec_keys[11*4] __attribute__((aligned(16)));
 #endif
 };
 

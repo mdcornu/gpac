@@ -40,6 +40,8 @@ struct _gf_crypt_context
 
 	/* Internal context for openSSL or tiny AES*/
 	void *context;
+	/* Internal pointer to multi-buffer manager for IPSec_MB */
+	void *imb_mgr;
 
 	//ptr to encryption function
 	GF_Err(*_init_crypt) (GF_Crypt *ctx, void*, const void*);
