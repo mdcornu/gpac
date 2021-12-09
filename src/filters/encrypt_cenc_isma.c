@@ -169,7 +169,7 @@ typedef struct
 	u32 nb_jobs, nb_job_alloc;
 	CENC_PaquetJob *jobs;
 
-	u32 nb_jobs_done;
+	u32 cryp_done;
 } CENC_PaquetState;
 
 
@@ -179,15 +179,26 @@ static CENC_PaquetState *cenc_get_pck_state(GF_CENCEncCtx *ctx)
 	if (!p) {
 		GF_SAFEALLOC(p, CENC_PaquetState);
 	} else {
-		p->nb_jobs_done = 0;
+		p->cryp_done = 0;
 		p->nb_jobs = 0;
 	}
 	return p;
 }
 
-static GF_Err cenc_queue_crypt_jobs(GF_CENCStream *cstr, CENC_PaquetState *pck_state, Bool force_iv, u32 key_idx, u8 *buf, u32 size)
+static GF_Err cenc_queue_crypt_jobs(GF_CENCEncCtx *ctx, GF_CENCStream *cstr, CENC_PaquetState *pck_state,
+				    Bool force_iv, u32 key_idx, u8 *buf, u32 size)
 {
 	CENC_PaquetJob *job;
+	CENC_PaquetState *ret_pck = pck_state;
+	GF_Err e;
+
+	// data length < 16 can be skipped since
+	// not enough data to encrypt
+	if (size < 16) {
+		pck_state->cryp_done = 1;
+		return GF_OK;
+	}
+
 	if (pck_state->nb_jobs == pck_state->nb_job_alloc) {
 		pck_state->nb_job_alloc++;
 		pck_state->jobs = gf_realloc(pck_state->jobs, sizeof(CENC_PaquetJob) * pck_state->nb_job_alloc);
@@ -205,42 +216,70 @@ static GF_Err cenc_queue_crypt_jobs(GF_CENCStream *cstr, CENC_PaquetState *pck_s
 		} else {
 			memcpy(job->IV, cstr->keys[key_idx].IV, 16);
 		}
+		e = gf_crypt_set_IV(cstr->keys[job->key_idx].crypt, job->IV, cstr->ctr_mode ? 17 : 16);
+	}
+	pck_state->nb_jobs++;
+
+	// submit packet to be encrypted
+	// potentially get encrypted packet back
+	e = gf_crypt_encrypt_enqueue(cstr->keys[job->key_idx].crypt, job->data,
+				     job->size, (void **)&ret_pck);
+	if (e != GF_OK)
+		return e;
+
+	while (ret_pck != NULL) {
+		// mark encrypted packets as complete
+		ret_pck->cryp_done = 1;
+		ret_pck = gf_crypt_get_completed(cstr->keys[job->key_idx].crypt);
 	}
 
-	pck_state->nb_jobs++;
-	return GF_OK;
+	return e;
 }
 
 static GF_Err cenc_flush_crypt_jobs(GF_CENCEncCtx *ctx, GF_CENCStream *cstr, Bool force_flush)
 {
-	GF_Err e;
-	if (!force_flush) {
-		//in this example, flush every 8 packets
-		if (gf_list_count(cstr->postpone_pcks) < 8) {
-			return GF_OK;
+	CENC_PaquetState *ret_pck = NULL;
+	GF_Err e = GF_OK;
+
+	u32 nb_rem_pcks = gf_list_count(cstr->postpone_pcks);
+	if (!nb_rem_pcks)
+		return e;
+
+	if (force_flush || nb_rem_pcks > 32)
+		// flush any outstanding packets
+		// in this example, flush if more than 32 packets
+		while ((ret_pck = (CENC_PaquetState *)
+			gf_crypt_flush(cstr->keys[0].crypt)) != NULL)
+			ret_pck->cryp_done = 1;
+
+	// send all completed packets
+	while (nb_rem_pcks) {
+		// get next packet from list and check if completed
+		ret_pck = gf_list_get(cstr->postpone_pcks, 0);
+		if (!ret_pck->cryp_done)
+			break;
+		// send completed packet and reset fields
+		e = gf_filter_pck_send(ret_pck->dst);
+		if (e != GF_OK) {
+			printf("Error: failed to send packet!");
+			return e;
 		}
-	}
-	//serial processing
-	//packets MUST be send in order of the queue
-	while (gf_list_count(cstr->postpone_pcks)) {
-		u32 i;
-		CENC_PaquetState *pck_state = gf_list_pop_front(cstr->postpone_pcks);
+		ret_pck->nb_jobs = 0;
+		ret_pck->cryp_done = 0;
 
-		for (i=0; i<pck_state->nb_jobs; i++) {
-			CENC_PaquetJob *job = &pck_state->jobs[i];
-			if (job->force_iv) {
-				e = gf_crypt_set_IV(cstr->keys[job->key_idx].crypt, job->IV, cstr->ctr_mode ? 17 : 16);
-			}
-			e = gf_crypt_encrypt(cstr->keys[job->key_idx].crypt, job->data, job->size);
-		}
-		//done, we can send the packet
-		gf_filter_pck_send(pck_state->dst);
+		// move empty packet to reserve list
+		gf_list_pop_front(cstr->postpone_pcks);
+		gf_list_add(ctx->postpone_res, ret_pck);
 
-		pck_state->nb_jobs = 0;
-		gf_list_add(ctx->postpone_res, pck_state);
+		nb_rem_pcks = gf_list_count(cstr->postpone_pcks);
 	}
 
-	return GF_OK;
+	if (force_flush && (gf_list_count(cstr->postpone_pcks)) != 0) {
+		printf("Error: outstanding packets after flush!\n");
+		e = GF_PENDING_PACKET;
+	}
+
+	return e;
 }
 #endif
 
@@ -1995,14 +2034,16 @@ static GF_Err cenc_encrypt_packet(GF_CENCEncCtx *ctx, GF_CENCStream *cstr, GF_Fi
 #endif
 
 					//pattern encryption
-					if (cstr->tci->crypt_byte_block && cstr->tci->skip_byte_block) {
+					/* if (cstr->tci->crypt_byte_block && cstr->tci->skip_byte_block) { */
+					// force full subsample
+					if (0) {
 						u32 res = nalu_size - clear_bytes - clear_bytes_at_end;
 						pos = cur_pos;
 						assert((res % 16) == 0);
 
 						while (res) {
 #ifdef CRYPT_POSTPONE
-							e = cenc_queue_crypt_jobs(cstr, pck_state, force_iv, key_idx,
+							e = cenc_queue_crypt_jobs(ctx, cstr, pck_state, force_iv, key_idx,
 										output+pos,
 										res >= (u32) (16*cstr->tci->crypt_byte_block) ? 16*cstr->tci->crypt_byte_block : res);
 
@@ -2021,7 +2062,7 @@ static GF_Err cenc_encrypt_packet(GF_CENCEncCtx *ctx, GF_CENCStream *cstr, GF_Fi
 					//full subsample encryption
 					else {
 #ifdef CRYPT_POSTPONE
-						e = cenc_queue_crypt_jobs(cstr, pck_state, force_iv, key_idx,
+						e = cenc_queue_crypt_jobs(ctx, cstr, pck_state, force_iv, key_idx,
 									output+cur_pos, nalu_size - clear_bytes - clear_bytes_at_end);
 						force_iv = GF_FALSE;
 #else
@@ -2121,7 +2162,7 @@ static GF_Err cenc_encrypt_packet(GF_CENCEncCtx *ctx, GF_CENCStream *cstr, GF_Fi
 		else if (cstr->ctr_mode) {
 			gf_bs_skip_bytes(ctx->bs_r, pck_size);
 #ifdef CRYPT_POSTPONE
-			e = cenc_queue_crypt_jobs(cstr, pck_state, force_iv, 0, output, pck_size);
+			e = cenc_queue_crypt_jobs(ctx, cstr, pck_state, force_iv, 0, output, pck_size);
 			force_iv = GF_FALSE;
 #else
 			e = gf_crypt_encrypt(cstr->keys[0].crypt, output, pck_size);
@@ -2145,7 +2186,7 @@ static GF_Err cenc_encrypt_packet(GF_CENCEncCtx *ctx, GF_CENCStream *cstr, GF_Fi
 
 			if (pck_size >= 16) {
 #ifdef CRYPT_POSTPONE
-				e = cenc_queue_crypt_jobs(cstr, pck_state, force_iv, 0, output, pck_size - clear_trailing);
+				e = cenc_queue_crypt_jobs(ctx, cstr, pck_state, force_iv, 0, output, pck_size - clear_trailing);
 				force_iv = GF_FALSE;
 #else
 				e = gf_crypt_encrypt(cstr->keys[0].crypt, output, pck_size - clear_trailing);

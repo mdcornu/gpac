@@ -41,6 +41,9 @@ struct _gf_crypt_context
 	/* Internal context for openSSL or tiny AES*/
 	void *context;
 
+	/* Internal pointer to multi-buffer manager for IPSec_MB */
+	void *imb_mgr;
+
 	//ptr to encryption function
 	GF_Err(*_init_crypt) (GF_Crypt *ctx, void*, const void*);
 	void(*_deinit_crypt) (GF_Crypt *ctx);
@@ -50,6 +53,9 @@ struct _gf_crypt_context
 	GF_Err(*_decrypt) (GF_Crypt*, u8 *buffer, u32 size);
 	GF_Err(*_set_state) (GF_Crypt*, const u8 *IV, u32 IV_size);
 	GF_Err(*_get_state) (GF_Crypt*, u8 *IV, u32 *IV_size);
+	GF_Err(*_crypt_enqueue) (GF_Crypt*, u8 *buffer, u32 size, void **pck);
+	void*(*_get_completed) (GF_Crypt*);
+	void*(*_flush) (GF_Crypt*);
 };
 
 #ifdef GPAC_HAS_SSL

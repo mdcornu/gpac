@@ -47,6 +47,9 @@ struct AES_ctx
   u8 Iv[AES_BLOCKLEN];
   u8 counter_pos;
   u8 buffer[AES_BLOCKLEN];
+  u32 enc_keys[11*4] __attribute__((aligned(16))); // 16 byte keys * 11 rounds
+  u32 dec_keys[11*4] __attribute__((aligned(16)));
+
 #endif
 };
 

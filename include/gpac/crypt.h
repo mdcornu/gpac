@@ -141,6 +141,34 @@ GF_Err gf_crypt_encrypt(GF_Crypt *gfc, void *plaintext, u32 size);
 */
 GF_Err gf_crypt_decrypt(GF_Crypt *gfc, void *ciphertext, u32 size);
 
+/*! enqueues a payload for encryption. The encryption is done inplace (plaintext is replaced by the ciphertext).
+ The buffer size should be k*algorithms_block_size if used in a mode which operated in blocks (CBC).
+ Currently only CBCS is supported by this API.
+
+\param gfc the target crytpo context
+\param plaintext the clear buffer
+\param size the size of the clear buffer
+\param [in/out] pck pointer to the packet to be encrypted
+       set to returned encrypted packet or null if no encrypted packet is available
+\return error if any
+*/
+GF_Err gf_crypt_encrypt_enqueue(GF_Crypt *gfc, u8 *plaintext, u32 size, void **pck);
+
+/*! retrieve processed packet
+ Currently only CBCS is supported by this API.
+\param gfc the target crytpo context
+\return pointer to processed packet or null if no processed packet is available
+*/
+void * gf_crypt_get_completed(GF_Crypt *gfc);
+
+/*! flush packet
+ Force enqueued packet to be processed and returned.
+ Currently only CBCS is supported by this API.
+\param gfc the target crytpo context
+\return pointer to processed packet or null if no processed packet is available
+*/
+void * gf_crypt_flush(GF_Crypt *gfc);
+
 
 /*! @} */
 

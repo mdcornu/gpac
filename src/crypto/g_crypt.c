@@ -103,3 +103,28 @@ GF_Err gf_crypt_decrypt(GF_Crypt *td, void *ciphertext, u32 len)
 	if (!len) return GF_OK;
 	return td->_decrypt(td, ciphertext, len);
 }
+
+GF_EXPORT
+GF_Err gf_crypt_encrypt_enqueue(GF_Crypt *td, u8 *plaintext, u32 len, void **pck)
+{
+	if (!td) return GF_BAD_PARAM;
+	if (!pck) return GF_BAD_PARAM;
+	if (*pck == NULL) return GF_BAD_PARAM;
+	if (len<16) return GF_OK;
+	return td->_crypt_enqueue(td, plaintext, len, pck);
+}
+
+GF_EXPORT
+void * gf_crypt_get_completed(GF_Crypt *td)
+{
+	if (!td) return GF_BAD_PARAM;
+	return td->_get_completed(td);
+}
+
+GF_EXPORT
+void * gf_crypt_flush(GF_Crypt *td)
+{
+	if (!td) return GF_BAD_PARAM;
+	return td->_flush(td);
+}
+
